@@ -1,0 +1,12 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Thay đổi parent để hỗ trợ Material Components -->
+    <style name="Base.Theme.QuanLyChiTieu" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#4CAF50</item>
+        <item name="colorPrimaryVariant">#388E3C</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">#2196F3</item>
+        <item name="colorOnSecondary">@color/white</item>
+    </style>
+
+    <style name="Theme.QuanLyChiTieu" parent="Base.Theme.QuanLyChiTieu" />
+</resources>

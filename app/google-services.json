@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "523077392488",
+    "project_id": "dbqlchitieu",
+    "storage_bucket": "dbqlchitieu.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523077392488:android:140f9cf60c1215d3ac43dd",
+        "android_client_info": {
+          "package_name": "com.example.quanlychitieu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCo3fBsEbUAF4q0jLVV6rfAs5kOwUpYir4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

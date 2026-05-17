@@ -23,7 +23,9 @@ import com.google.firebase.database.ValueEventListener;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -36,6 +38,7 @@ public class ThemHanMucActivity extends AppCompatActivity {
     private Button btnSaveLimit, btnExitLimit;
 
     private DatabaseReference limitRef;
+    private DatabaseReference transactionRef;
     private boolean isFormatting = false;
 
     private double monthlyLimit = 0;
@@ -50,10 +53,11 @@ public class ThemHanMucActivity extends AppCompatActivity {
         String userId = user != null ? user.getUid() : "test_user_123";
 
         String dbUrl = "https://dbqlchitieu-default-rtdb.asia-southeast1.firebasedatabase.app/";
-        limitRef = FirebaseDatabase.getInstance(dbUrl)
+        DatabaseReference userRef = FirebaseDatabase.getInstance(dbUrl)
                 .getReference("users")
-                .child(userId)
-                .child("limits");
+                .child(userId);
+        limitRef = userRef.child("limits");
+        transactionRef = userRef.child("transactions");
 
         btnBack = findViewById(R.id.btnBack);
         edtLimit = findViewById(R.id.edtLimit);
@@ -157,14 +161,164 @@ public class ThemHanMucActivity extends AppCompatActivity {
             updates.put("yearlyLimit", limitAmount);
         }
 
+        if (rbMonth.isChecked()) {
+            monthlyLimit = limitAmount;
+        } else if (rbYear.isChecked()) {
+            yearlyLimit = limitAmount;
+        }
+
         limitRef.updateChildren(updates)
-                .addOnSuccessListener(unused -> {
-                    Toast.makeText(this, "Đã lưu hạn mức", Toast.LENGTH_SHORT).show();
-                    finish();
-                })
+                .addOnSuccessListener(unused -> reloadLimitsAndRefreshTransactionStatus())
                 .addOnFailureListener(e ->
                         Toast.makeText(this, "Lưu thất bại: " + e.getMessage(), Toast.LENGTH_SHORT).show()
                 );
+    }
+
+    private void reloadLimitsAndRefreshTransactionStatus() {
+        limitRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                monthlyLimit = getDoubleValue(snapshot.child("monthlyLimit"));
+                yearlyLimit = getDoubleValue(snapshot.child("yearlyLimit"));
+                refreshTransactionLimitStatus();
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(ThemHanMucActivity.this, "Đã lưu hạn mức", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        });
+    }
+
+    private void refreshTransactionLimitStatus() {
+        transactionRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Map<String, Double> expenseTotalByMonth = new HashMap<>();
+                Map<String, Double> expenseTotalByYear = new HashMap<>();
+                List<DataSnapshot> transactionSnapshots = new ArrayList<>();
+
+                for (DataSnapshot data : snapshot.getChildren()) {
+                    Transaction transaction = data.getValue(Transaction.class);
+
+                    if (transaction == null || transaction.getDate() == null || transaction.getType() == null) {
+                        continue;
+                    }
+
+                    transactionSnapshots.add(data);
+
+                    if (!"chi".equals(transaction.getType())) {
+                        continue;
+                    }
+
+                    String monthKey = getYearMonthKey(transaction.getDate());
+                    String yearKey = getYearKey(transaction.getDate());
+
+                    if (!monthKey.isEmpty()) {
+                        expenseTotalByMonth.put(
+                                monthKey,
+                                expenseTotalByMonth.getOrDefault(monthKey, 0.0) + transaction.getAmount()
+                        );
+                    }
+
+                    if (!yearKey.isEmpty()) {
+                        expenseTotalByYear.put(
+                                yearKey,
+                                expenseTotalByYear.getOrDefault(yearKey, 0.0) + transaction.getAmount()
+                        );
+                    }
+                }
+
+                Map<String, Object> updates = new HashMap<>();
+
+                for (DataSnapshot data : transactionSnapshots) {
+                    Transaction transaction = data.getValue(Transaction.class);
+
+                    if (transaction == null || data.getKey() == null) {
+                        continue;
+                    }
+
+                    boolean overMonth = false;
+                    boolean overYear = false;
+
+                    if ("chi".equals(transaction.getType()) && transaction.getDate() != null) {
+                        String monthKey = getYearMonthKey(transaction.getDate());
+                        String yearKey = getYearKey(transaction.getDate());
+
+                        double monthTotal = expenseTotalByMonth.getOrDefault(monthKey, 0.0);
+                        double yearTotal = expenseTotalByYear.getOrDefault(yearKey, 0.0);
+
+                        overMonth = monthlyLimit > 0 && monthTotal > monthlyLimit;
+                        overYear = yearlyLimit > 0 && yearTotal > yearlyLimit;
+                    }
+
+                    boolean overLimit = overMonth || overYear;
+                    String overLimitType = getOverLimitType(overMonth, overYear);
+
+                    updates.put(data.getKey() + "/overLimit", overLimit);
+                    updates.put(data.getKey() + "/overLimitType", overLimitType);
+                }
+
+                if (updates.isEmpty()) {
+                    Toast.makeText(ThemHanMucActivity.this, "Đã lưu hạn mức", Toast.LENGTH_SHORT).show();
+                    finish();
+                    return;
+                }
+
+                transactionRef.updateChildren(updates)
+                        .addOnSuccessListener(unused -> {
+                            Toast.makeText(ThemHanMucActivity.this, "Đã lưu hạn mức", Toast.LENGTH_SHORT).show();
+                            finish();
+                        })
+                        .addOnFailureListener(e -> {
+                            Toast.makeText(
+                                    ThemHanMucActivity.this,
+                                    "Đã lưu hạn mức nhưng chưa cập nhật được trạng thái",
+                                    Toast.LENGTH_LONG
+                            ).show();
+                            finish();
+                        });
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(ThemHanMucActivity.this, "Đã lưu hạn mức", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        });
+    }
+
+    private String getOverLimitType(boolean overMonth, boolean overYear) {
+        if (overMonth && overYear) {
+            return "monthly_yearly";
+        }
+
+        if (overMonth) {
+            return "monthly";
+        }
+
+        if (overYear) {
+            return "yearly";
+        }
+
+        return "";
+    }
+
+    private String getYearMonthKey(String date) {
+        if (date == null || date.length() < 7) {
+            return "";
+        }
+
+        return date.substring(0, 7);
+    }
+
+    private String getYearKey(String date) {
+        if (date == null || date.length() < 4) {
+            return "";
+        }
+
+        return date.substring(0, 4);
     }
 
     private void setupMoneyFormatter() {
@@ -210,6 +364,13 @@ public class ThemHanMucActivity extends AppCompatActivity {
         if (value instanceof Long) return ((Long) value).doubleValue();
         if (value instanceof Double) return (Double) value;
         if (value instanceof Integer) return ((Integer) value).doubleValue();
+        if (value instanceof String) {
+            try {
+                return Double.parseDouble(((String) value).replaceAll("[^0-9.-]", ""));
+            } catch (Exception ignored) {
+                return 0;
+            }
+        }
         return 0;
     }
 }

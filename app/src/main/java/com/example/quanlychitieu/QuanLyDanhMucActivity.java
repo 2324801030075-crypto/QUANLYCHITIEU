@@ -2,6 +2,7 @@ package com.example.quanlychitieu;
 
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
@@ -41,7 +42,7 @@ import java.util.Map;
 public class QuanLyDanhMucActivity extends AppCompatActivity {
 
     private TextView btnBack;
-    private Button btnAddCategory;
+    private Button btnAddCategory, btnTabIncome, btnTabExpense;
     private RecyclerView rvCategoryList;
     private BottomNavigationView bottomNav;
 
@@ -54,6 +55,7 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
     private final List<String> iconList = new ArrayList<>();
 
     private CategoryAdapter adapter;
+    private String currentCategoryType = "thu";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,6 +75,8 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
 
         btnBack = findViewById(R.id.btnBack);
         btnAddCategory = findViewById(R.id.btnAddCategory);
+        btnTabIncome = findViewById(R.id.btnTabIncome);
+        btnTabExpense = findViewById(R.id.btnTabExpense);
         rvCategoryList = findViewById(R.id.rvCategoryList);
         bottomNav = findViewById(R.id.bottomNav);
 
@@ -95,10 +99,43 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
         btnBack.setOnClickListener(v -> finish());
         btnAddCategory.setOnClickListener(v -> showCategoryDialog(null));
 
+        btnTabIncome.setOnClickListener(v -> {
+            currentCategoryType = "thu";
+            updateTabUI();
+            rebuildCategoryDisplay();
+        });
+
+        btnTabExpense.setOnClickListener(v -> {
+            currentCategoryType = "chi";
+            updateTabUI();
+            rebuildCategoryDisplay();
+        });
+
         setupBottomNav();
+        updateTabUI();
         listenCategories();
         listenTransactions();
     }
+
+    private void updateTabUI() {
+        int green = Color.parseColor("#2E7D32");
+        int gray = Color.parseColor("#757575");
+
+        if ("thu".equals(currentCategoryType)) {
+            btnTabIncome.setTextColor(green);
+            btnTabExpense.setTextColor(gray);
+
+            btnAddCategory.setText("+ Thêm danh mục thu nhập");
+            btnAddCategory.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50")));
+        } else {
+            btnTabIncome.setTextColor(gray);
+            btnTabExpense.setTextColor(green);
+
+            btnAddCategory.setText("+ Thêm danh mục chi tiêu");
+            btnAddCategory.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#F44336")));
+        }
+    }
+
     private void showDeleteCategoryDialog(Category category) {
         String[] options = {"Xóa"};
 
@@ -117,7 +154,7 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle("Xóa danh mục")
                 .setMessage("Bạn có chắc muốn xóa danh mục \"" + category.getName() + "\" không?\n\n"
-                        + "Danh mục này sẽ không còn hiển thị khi thêm chi tiêu mới.\n"
+                        + "Danh mục này sẽ không còn hiển thị khi thêm giao dịch mới.\n"
                         + "Các giao dịch cũ vẫn được giữ nguyên.")
                 .setPositiveButton("Xóa", (dialog, which) -> softDeleteCategory(category))
                 .setNegativeButton("Hủy", null)
@@ -138,6 +175,7 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
                         Toast.makeText(this, "Xóa danh mục thất bại!", Toast.LENGTH_SHORT).show()
                 );
     }
+
     private void setupBottomNav() {
         bottomNav.setSelectedItemId(R.id.nav_home);
 
@@ -174,7 +212,12 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
 
                 for (DataSnapshot data : snapshot.getChildren()) {
                     Category cat = data.getValue(Category.class);
+
                     if (cat != null && !cat.isDeleted()) {
+                        if (TextUtils.isEmpty(cat.getType())) {
+                            cat.setType("chi");
+                        }
+
                         rawCategoryList.add(cat);
                     }
                 }
@@ -197,6 +240,7 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
 
                 for (DataSnapshot data : snapshot.getChildren()) {
                     Transaction t = data.getValue(Transaction.class);
+
                     if (t != null) {
                         transactionList.add(t);
                     }
@@ -216,29 +260,47 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
         categoryList.clear();
 
         String currentMonth = new SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(new Date());
-        Map<String, Double> monthlyExpenseMap = new LinkedHashMap<>();
+        Map<String, Double> monthlyMap = new LinkedHashMap<>();
 
         for (Transaction t : transactionList) {
             if (t.getDate() == null || t.getType() == null) continue;
-            if (!"chi".equals(t.getType())) continue;
+            if (!currentCategoryType.equals(t.getType())) continue;
             if (!t.getDate().startsWith(currentMonth)) continue;
 
             String categoryName = t.getCategoryId();
-            if (TextUtils.isEmpty(categoryName)) categoryName = t.getTitle();
-            if (TextUtils.isEmpty(categoryName)) categoryName = "Khác";
 
-            double oldValue = monthlyExpenseMap.containsKey(categoryName) ? monthlyExpenseMap.get(categoryName) : 0.0;
-            monthlyExpenseMap.put(categoryName, oldValue + t.getAmount());
+            if (TextUtils.isEmpty(categoryName)) {
+                categoryName = t.getTitle();
+            }
+
+            if (TextUtils.isEmpty(categoryName)) {
+                categoryName = "Khác";
+            }
+
+            double oldValue = monthlyMap.containsKey(categoryName) ? monthlyMap.get(categoryName) : 0.0;
+            monthlyMap.put(categoryName, oldValue + t.getAmount());
         }
 
         for (Category raw : rawCategoryList) {
-            double total = monthlyExpenseMap.containsKey(raw.getName()) ? monthlyExpenseMap.get(raw.getName()) : 0.0;
+            String rawType = raw.getType();
+
+            if (TextUtils.isEmpty(rawType)) {
+                rawType = "chi";
+            }
+
+            if (!currentCategoryType.equals(rawType)) {
+                continue;
+            }
+
+            double total = monthlyMap.containsKey(raw.getName()) ? monthlyMap.get(raw.getName()) : 0.0;
 
             Category displayCategory = new Category(
                     raw.getId(),
                     raw.getName(),
                     raw.getIconName(),
-                    String.format(Locale.GERMANY, "%,.0f VNĐ", total)
+                    String.format(Locale.GERMANY, "%,.0f VNĐ", total),
+                    false,
+                    currentCategoryType
             );
 
             categoryList.add(displayCategory);
@@ -330,7 +392,7 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
             return;
         }
 
-        Category category = new Category(id, categoryName, iconName, "0 VNĐ", false);
+        Category category = new Category(id, categoryName, iconName, "0 VNĐ", false, currentCategoryType);
 
         mCategoryRef.child(id).setValue(category)
                 .addOnSuccessListener(unused -> {
@@ -349,7 +411,16 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
             Toast.makeText(this, "Danh mục không hợp lệ!", Toast.LENGTH_SHORT).show();
             return;
         }
-        Category updatedCategory = new Category(id, newName, newIconName, oldCategory.getAmount(), false);
+
+        Category updatedCategory = new Category(
+                id,
+                newName,
+                newIconName,
+                oldCategory.getAmount(),
+                false,
+                currentCategoryType
+        );
+
         mCategoryRef.child(id).setValue(updatedCategory)
                 .addOnSuccessListener(unused -> {
                     if (!TextUtils.equals(oldCategory.getName(), newName)) {
@@ -372,12 +443,17 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
                     Transaction t = data.getValue(Transaction.class);
                     if (t == null) continue;
 
+                    if (!currentCategoryType.equals(t.getType())) {
+                        continue;
+                    }
+
                     boolean needUpdateCategory = oldName.equals(t.getCategoryId());
                     boolean needUpdateTitle = oldName.equals(t.getTitle());
 
                     if (needUpdateCategory) {
                         data.getRef().child("categoryId").setValue(newName);
                     }
+
                     if (needUpdateTitle) {
                         data.getRef().child("title").setValue(newName);
                     }
@@ -409,8 +485,10 @@ public class QuanLyDanhMucActivity extends AppCompatActivity {
         List<String> result = new ArrayList<>();
 
         Field[] fields = R.drawable.class.getDeclaredFields();
+
         for (Field field : fields) {
             String name = field.getName();
+
             if (name.startsWith("icons8_")) {
                 result.add(name);
             }

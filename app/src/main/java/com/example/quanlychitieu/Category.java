@@ -6,6 +6,7 @@ public class Category {
     private String iconName;
     private String amount;
     private boolean deleted;
+    private String type; // "thu" hoặc "chi"
 
     public Category() {}
 
@@ -15,6 +16,7 @@ public class Category {
         this.iconName = iconName;
         this.amount = amount;
         this.deleted = false;
+        this.type = "chi";
     }
 
     public Category(String id, String name, String iconName, String amount, boolean deleted) {
@@ -23,6 +25,16 @@ public class Category {
         this.iconName = iconName;
         this.amount = amount;
         this.deleted = deleted;
+        this.type = "chi";
+    }
+
+    public Category(String id, String name, String iconName, String amount, boolean deleted, String type) {
+        this.id = id;
+        this.name = name;
+        this.iconName = iconName;
+        this.amount = amount;
+        this.deleted = deleted;
+        this.type = type;
     }
 
     public String getId() { return id; }
@@ -39,4 +51,7 @@ public class Category {
 
     public boolean isDeleted() { return deleted; }
     public void setDeleted(boolean deleted) { this.deleted = deleted; }
+
+    public String getType() { return type; }
+    public void setType(String type) { this.type = type; }
 }

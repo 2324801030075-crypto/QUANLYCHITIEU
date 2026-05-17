@@ -8,11 +8,13 @@
     android:layout_height="match_parent"
     android:background="#F5F7FA"
     tools:context=".AddExpenseActivity">
+
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         app:cardElevation="4dp"
         app:cardCornerRadius="0dp">
+
         <LinearLayout
             android:orientation="horizontal"
             android:background="#4CAF50"
@@ -32,6 +34,7 @@
                 android:padding="5dp"/>
 
             <TextView
+                android:id="@+id/tvHeaderTitle"
                 android:text="Thêm khoản chi"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -40,6 +43,7 @@
                 android:textStyle="bold"/>
         </LinearLayout>
     </androidx.cardview.widget.CardView>
+
     <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -76,7 +80,6 @@
                 android:background="#DDDDDD"
                 android:layout_marginBottom="16dp"/>
 
-            <!-- NỘI DUNG -->
             <TextView
                 android:text="NỘI DUNG"
                 android:layout_width="wrap_content"

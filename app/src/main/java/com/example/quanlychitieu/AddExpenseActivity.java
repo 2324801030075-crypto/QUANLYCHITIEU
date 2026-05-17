@@ -30,19 +30,22 @@ import java.util.Locale;
 
 public class AddExpenseActivity extends AppCompatActivity {
 
+    public static final String EXTRA_TRANSACTION_TYPE = "TRANSACTION_TYPE";
+
     private EditText edtMoney, edtNote;
-    private TextView tvSelectedCategory, btnBack;
+    private TextView tvSelectedCategory, btnBack, tvHeaderTitle;
     private GridLayout gridCategorySelect;
     private Button btnSave;
 
     private DatabaseReference mDatabase;
     private String userId;
     private String selectedCategoryName = "";
+    private String transactionType = "chi";
+
     private double currentBalance = 0;
 
     private double monthlyLimit = 0;
     private double yearlyLimit = 0;
-
     private double currentMonthExpense = 0;
     private double currentYearExpense = 0;
 
@@ -56,6 +59,11 @@ public class AddExpenseActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_add_expense);
+
+        String typeFromIntent = getIntent().getStringExtra(EXTRA_TRANSACTION_TYPE);
+        if ("thu".equals(typeFromIntent) || "chi".equals(typeFromIntent)) {
+            transactionType = typeFromIntent;
+        }
 
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         userId = (user != null) ? user.getUid() : "test_user_123";
@@ -72,13 +80,31 @@ public class AddExpenseActivity extends AppCompatActivity {
         gridCategorySelect = findViewById(R.id.gridCategorySelect);
         btnSave = findViewById(R.id.btnSave);
         btnBack = findViewById(R.id.btnBack);
+        tvHeaderTitle = findViewById(R.id.tvHeaderTitle);
 
+        setupScreenByType();
         loadBalance();
         loadLimitAndStats();
         loadCategories();
 
         btnBack.setOnClickListener(v -> finish());
-        btnSave.setOnClickListener(v -> processExpense());
+        btnSave.setOnClickListener(v -> processTransaction());
+    }
+
+    private void setupScreenByType() {
+        if ("thu".equals(transactionType)) {
+            tvHeaderTitle.setText("Thêm thu nhập");
+            edtMoney.setTextColor(Color.parseColor("#2E7D32"));
+            edtNote.setHint("Ví dụ: Lương tháng");
+            tvSelectedCategory.setText("DANH MỤC THU: Chưa chọn");
+            btnSave.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50")));
+        } else {
+            tvHeaderTitle.setText("Thêm khoản chi");
+            edtMoney.setTextColor(Color.parseColor("#F44336"));
+            edtNote.setHint("Ví dụ: Ăn trưa");
+            tvSelectedCategory.setText("DANH MỤC CHI: Chưa chọn");
+            btnSave.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#4CAF50")));
+        }
     }
 
     private void loadBalance() {
@@ -167,11 +193,28 @@ public class AddExpenseActivity extends AppCompatActivity {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 gridCategorySelect.removeAllViews();
+
                 for (DataSnapshot data : snapshot.getChildren()) {
                     Category cat = data.getValue(Category.class);
-                    if (cat != null && !cat.isDeleted()) {
+
+                    if (cat == null || cat.isDeleted()) continue;
+
+                    String catType = cat.getType();
+                    if (TextUtils.isEmpty(catType)) {
+                        catType = "chi";
+                    }
+
+                    if (transactionType.equals(catType)) {
                         addCategoryToGrid(cat);
                     }
+                }
+
+                if (gridCategorySelect.getChildCount() == 0) {
+                    Toast.makeText(
+                            AddExpenseActivity.this,
+                            "Chưa có danh mục " + ("thu".equals(transactionType) ? "thu nhập" : "chi tiêu") + ". Hãy thêm trong Quản lý danh mục.",
+                            Toast.LENGTH_LONG
+                    ).show();
                 }
             }
 
@@ -195,7 +238,12 @@ public class AddExpenseActivity extends AppCompatActivity {
 
         v.setOnClickListener(view -> {
             selectedCategoryName = cat.getName();
-            tvSelectedCategory.setText("DANH MỤC: " + selectedCategoryName);
+
+            if ("thu".equals(transactionType)) {
+                tvSelectedCategory.setText("DANH MỤC THU: " + selectedCategoryName);
+            } else {
+                tvSelectedCategory.setText("DANH MỤC CHI: " + selectedCategoryName);
+            }
 
             for (int i = 0; i < gridCategorySelect.getChildCount(); i++) {
                 gridCategorySelect.getChildAt(i).setBackgroundColor(Color.TRANSPARENT);
@@ -213,7 +261,7 @@ public class AddExpenseActivity extends AppCompatActivity {
         gridCategorySelect.addView(v);
     }
 
-    private void processExpense() {
+    private void processTransaction() {
         String moneyStr = edtMoney.getText().toString().trim();
 
         if (TextUtils.isEmpty(moneyStr) || TextUtils.isEmpty(selectedCategoryName)) {
@@ -235,12 +283,16 @@ public class AddExpenseActivity extends AppCompatActivity {
             return;
         }
 
-        if (amount > currentBalance) {
-            Toast.makeText(this, "Số dư không đủ!", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if ("thu".equals(transactionType)) {
+            saveTransaction(amount, false, "");
+        } else {
+            if (amount > currentBalance) {
+                Toast.makeText(this, "Số dư không đủ!", Toast.LENGTH_SHORT).show();
+                return;
+            }
 
-        checkLimitBeforeSave(amount);
+            checkLimitBeforeSave(amount);
+        }
     }
 
     private void checkLimitBeforeSave(double amount) {
@@ -248,7 +300,7 @@ public class AddExpenseActivity extends AppCompatActivity {
         boolean exceedYear = yearlyLimit > 0 && currentYearExpense + amount > yearlyLimit;
 
         if (!exceedMonth && !exceedYear) {
-            saveExpense(amount, false, "");
+            saveTransaction(amount, false, "");
             return;
         }
 
@@ -280,12 +332,12 @@ public class AddExpenseActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle("⚠️ Cảnh báo hạn mức")
                 .setMessage(message)
-                .setPositiveButton("Tiếp tục", (dialog, which) -> saveExpense(amount, true, overLimitType))
+                .setPositiveButton("Tiếp tục", (dialog, which) -> saveTransaction(amount, true, overLimitType))
                 .setNegativeButton("Thoát", (dialog, which) -> dialog.dismiss())
                 .show();
     }
 
-    private void saveExpense(double amount, boolean isOverLimit, String overLimitType) {
+    private void saveTransaction(double amount, boolean isOverLimit, String overLimitType) {
         String id = mDatabase.child("transactions").push().getKey();
         String date = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date());
 
@@ -295,30 +347,43 @@ public class AddExpenseActivity extends AppCompatActivity {
                 amount,
                 date,
                 selectedCategoryName,
-                "chi",
+                transactionType,
                 edtNote.getText().toString()
         );
 
         t.setOverLimit(isOverLimit);
         t.setOverLimitType(overLimitType);
 
-        if (id != null) {
-            mDatabase.child("transactions").child(id).setValue(t)
-                    .addOnSuccessListener(aVoid -> {
-                        mDatabase.child("profile").child("totalBalance").setValue(currentBalance - amount);
-
-                        if (isOverLimit) {
-                            Toast.makeText(this, "Đã lưu khoản chi vượt hạn mức!", Toast.LENGTH_SHORT).show();
-                        } else {
-                            Toast.makeText(this, "Đã lưu khoản chi!", Toast.LENGTH_SHORT).show();
-                        }
-
-                        finish();
-                    })
-                    .addOnFailureListener(e ->
-                            Toast.makeText(this, "Lưu thất bại: " + e.getMessage(), Toast.LENGTH_SHORT).show()
-                    );
+        if (id == null) {
+            Toast.makeText(this, "Không tạo được giao dịch!", Toast.LENGTH_SHORT).show();
+            return;
         }
+
+        mDatabase.child("transactions").child(id).setValue(t)
+                .addOnSuccessListener(aVoid -> {
+                    double newBalance;
+
+                    if ("thu".equals(transactionType)) {
+                        newBalance = currentBalance + amount;
+                    } else {
+                        newBalance = currentBalance - amount;
+                    }
+
+                    mDatabase.child("profile").child("totalBalance").setValue(newBalance);
+
+                    if ("thu".equals(transactionType)) {
+                        Toast.makeText(this, "Đã lưu thu nhập!", Toast.LENGTH_SHORT).show();
+                    } else if (isOverLimit) {
+                        Toast.makeText(this, "Đã lưu khoản chi vượt hạn mức!", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Đã lưu khoản chi!", Toast.LENGTH_SHORT).show();
+                    }
+
+                    finish();
+                })
+                .addOnFailureListener(e ->
+                        Toast.makeText(this, "Lưu thất bại: " + e.getMessage(), Toast.LENGTH_SHORT).show()
+                );
     }
 
     private double getDoubleValue(DataSnapshot snapshot) {
